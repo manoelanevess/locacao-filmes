@@ -1,0 +1,17 @@
+🎬 Sistema de Locação de Filmes
+
+Disciplina: Desenvolvimento de Serviços e APIs
+Aluna: Manoela das Neves
+Data de Apresentação: 29/05/2026
+
+📌 Sobre o Trabalho
+Este trabalho consiste no desenvolvimento de uma API REST para um Sistema de Locação de Filmes, conforme solicitado pelo professor. A API contém 3 tabelas relacionadas (clientes, filmes e locações), com CRUD completo nas tabelas básicas, transações nos processos de inclusão e exclusão de locações, e envio de e-mail com o histórico de locações de um cliente.
+
+🛠️ Tecnologias Utilizadas
+Node.js + TypeScript
+Express 5
+Prisma 7 (ORM)
+MySQL (banco de dados)
+Zod (validação de dados)
+Nodemailer + Mailtrap (envio de e-mails)
+Postman (testes das rotas)

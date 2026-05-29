@@ -1,0 +1,36 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mysql"
+}
+
+model Cliente {
+    id       Int       @id @default(autoincrement())
+    nome     String    @db.VarChar(100)
+    email    String    @unique @db.VarChar(100)
+    telefone String    @db.VarChar(20)
+    locacoes Locacao[]
+}
+
+model Filme {
+    id                   Int       @id @default(autoincrement())
+    titulo               String    @db.VarChar(150)
+    genero               String    @db.VarChar(50)
+    ano                  Int
+    quantidadeDisponivel Int
+    valorLocacao         Float
+    locacoes             Locacao[]
+}
+
+model Locacao {
+    id             Int      @id @default(autoincrement())
+    clienteId      Int
+    filmeId        Int
+    dataLocacao    DateTime @default(now())
+    quantidade     Int
+    cliente        Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+    filme          Filme    @relation(fields: [filmeId], references: [id], onDelete: Cascade)
+    formaPagamento String   @db.VarChar(50)
+}
