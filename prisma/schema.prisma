@@ -34,3 +34,29 @@ model Locacao {
     filme          Filme    @relation(fields: [filmeId], references: [id], onDelete: Cascade)
     formaPagamento String   @db.VarChar(50)
 }
+
+
+model Usuario {
+    id                     Int     @id @default(autoincrement())
+    nome                   String  @db.VarChar(100)
+    email                  String  @unique @db.VarChar(100)
+    senha                  String  @db.VarChar(255)
+    codigoRecuperacaoSenha String? @db.VarChar(4)
+    tentativasLoginInvalidas Int   @default(0)
+    bloqueado              Boolean @default(false)
+    ultimoLogin            DateTime?
+    logs                   Log[]
+
+    @@map("usuarios")
+}
+
+model Log {
+    id          Int      @id @default(autoincrement())
+    descricao   String   @db.VarChar(150)
+    complemento String?  @db.Text
+    createdAt   DateTime @default(now())
+    usuarioId   Int?
+    usuario     Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+    @@map("logs")
+}
