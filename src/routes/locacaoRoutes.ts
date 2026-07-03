@@ -1,8 +1,20 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import prisma from "../prismaClient.js";
 import { z } from "zod";
+import { registrarLog } from "../utils/log.js";
+import { verificarToken, type RequisicaoAutenticada } from "../middlewares/autenticacao.js";
 
 const router = Router();
+
+type LocacaoExcluida = {
+  id: number;
+  clienteId: number;
+  filmeId: number;
+  quantidade: number;
+  formaPagamento: string;
+  clienteNome: string;
+  filmeTitulo: string;
+};
 
 const locacaoSchema = z.object({
   clienteId: z.number().int().positive(),
@@ -11,7 +23,19 @@ const locacaoSchema = z.object({
   formaPagamento: z.string().max(50),
 });
 
-// listar todas as locações
+function obterUsuarioId(req: RequisicaoAutenticada) {
+  const headerUsuarioId = req.header("usuario-id") ?? req.header("x-usuario-id");
+  const bodyUsuarioId = req.body?.usuarioId;
+  const usuarioId = Number(req.usuarioId ?? headerUsuarioId ?? bodyUsuarioId);
+
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return null;
+  }
+
+  return usuarioId;
+}
+
+// listar todas as locacoes
 router.get("/", async (req, res) => {
   const locacoes = await prisma.locacao.findMany({
     include: {
@@ -23,7 +47,7 @@ router.get("/", async (req, res) => {
   res.json(locacoes);
 });
 
-// buscar locação por id
+// buscar locacao por id
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const locacao = await prisma.locacao.findUnique({
@@ -31,14 +55,13 @@ router.get("/:id", async (req, res) => {
     include: { cliente: true, filme: true },
   });
   if (!locacao) {
-    res.status(404).json({ erro: "Locação não encontrada" });
+    res.status(404).json({ erro: "Locacao nao encontrada" });
     return;
   }
   res.json(locacao);
 });
 
-// incluir locação — executa transação
-// transação: cria a locação e decrementa o estoque do filme
+// incluir locacao com transacao de estoque
 router.post("/", async (req, res) => {
   const dados = locacaoSchema.safeParse(req.body);
   if (!dados.success) {
@@ -51,16 +74,16 @@ router.post("/", async (req, res) => {
   try {
     const locacao = await prisma.$transaction(async (tx) => {
       const filme = await tx.filme.findUnique({ where: { id: filmeId } });
-      if (!filme) throw new Error("Filme não encontrado");
+      if (!filme) throw new Error("Filme nao encontrado");
 
       if (filme.quantidadeDisponivel < quantidade) {
         throw new Error(
-          `Estoque insuficiente. Disponível: ${filme.quantidadeDisponivel}`
+          "Estoque insuficiente. Disponivel: " + filme.quantidadeDisponivel
         );
       }
 
       const novaLocacao = await tx.locacao.create({
-        data: { clienteId, filmeId, quantidade, formaPagamento},
+        data: { clienteId, filmeId, quantidade, formaPagamento },
       });
 
       await tx.filme.update({
@@ -77,20 +100,37 @@ router.post("/", async (req, res) => {
     });
 
     res.status(201).json(locacaoCompleta);
-  } catch (error: any) {
-    res.status(400).json({ erro: error.message });
+  } catch (error) {
+    const mensagem = error instanceof Error ? error.message : "Erro ao criar locacao";
+    res.status(400).json({ erro: mensagem });
   }
 });
 
-// excluir locação — executa transação
-// transação: exclui o pagamento vinculado, exclui a locação e restaura o estoque
-router.delete("/:id", async (req, res) => {
+// excluir locacao com transacao de estoque
+router.delete("/:id", verificarToken, async (req, res) => {
   const id = Number(req.params.id);
+  let locacaoExcluida: LocacaoExcluida | null = null;
 
   try {
     await prisma.$transaction(async (tx) => {
-      const locacao = await tx.locacao.findUnique({ where: { id } });
-      if (!locacao) throw new Error("Locação não encontrada");
+      const locacao = await tx.locacao.findUnique({
+        where: { id },
+        include: {
+          cliente: { select: { nome: true } },
+          filme: { select: { titulo: true } },
+        },
+      });
+      if (!locacao) throw new Error("Locacao nao encontrada");
+
+      locacaoExcluida = {
+        id: locacao.id,
+        clienteId: locacao.clienteId,
+        filmeId: locacao.filmeId,
+        quantidade: locacao.quantidade,
+        formaPagamento: locacao.formaPagamento,
+        clienteNome: locacao.cliente.nome,
+        filmeTitulo: locacao.filme.titulo,
+      };
 
       await tx.locacao.delete({ where: { id } });
 
@@ -100,9 +140,29 @@ router.delete("/:id", async (req, res) => {
       });
     });
 
-    res.json({ mensagem: "Locação excluída e estoque restaurado com sucesso" });
-  } catch (error: any) {
-    res.status(400).json({ erro: error.message });
+    const locacaoParaLog = locacaoExcluida as LocacaoExcluida | null;
+
+    if (locacaoParaLog?.formaPagamento.trim().toLowerCase() === "dinheiro") {
+      await registrarLog({
+        descricao: "Acao suspeita: exclusao de locacao paga em dinheiro",
+        complemento:
+          "Locacao " +
+          locacaoParaLog.id +
+          " excluida. Cliente: " +
+          locacaoParaLog.clienteNome +
+          ". Filme: " +
+          locacaoParaLog.filmeTitulo +
+          ". Quantidade: " +
+          locacaoParaLog.quantidade +
+          ".",
+        usuarioId: obterUsuarioId(req),
+      });
+    }
+
+    res.json({ mensagem: "Locacao excluida e estoque restaurado com sucesso" });
+  } catch (error) {
+    const mensagem = error instanceof Error ? error.message : "Erro ao excluir locacao";
+    res.status(400).json({ erro: mensagem });
   }
 });
 
