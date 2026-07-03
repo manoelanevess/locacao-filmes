@@ -1,18 +1,8 @@
 import { Router } from "express";
-import nodemailer from "nodemailer";
 import prisma from "../prismaClient.js";
+import transporter from "../utils/email.js";
 
 const router = Router();
-
-// configuração do Mailtrap
-const transporter = nodemailer.createTransport({
-  host: "sandbox.smtp.mailtrap.io",
-  port: 2525,
-  auth: {
-    user: process.env.MAILTRAP_EMAIL,
-    pass: process.env.MAILTRAP_SENHA,
-  },
-});
 
 // enviar e-mail com o histórico de locações do cliente
 router.get("/cliente/:id", async (req, res) => {
